@@ -6,6 +6,13 @@ namespace {
 double limitar(double valor, double minimo, double maximo) {
     return std::max(minimo, std::min(maximo, valor));
 }
+
+double limitarPasoIntegral(double mando, double paso, double minimo, double maximo) {
+    // Con cero siempre permitido, la integral solo cambia en la dirección del error.
+    const double margenInferior = std::min(0.0, minimo - mando);
+    const double margenSuperior = std::max(0.0, maximo - mando);
+    return limitar(paso, margenInferior, margenSuperior);
+}
 }
 
 PIDControl::PIDControl(double& input, double& output, double& setpoint,
@@ -13,6 +20,42 @@ PIDControl::PIDControl(double& input, double& output, double& setpoint,
     : input_(input), output_(output), setpoint_(setpoint),
       signo_(direccion == DireccionPID::Directa ? 1.0 : -1.0) {
     SetTunings(kp, ki, kd);
+}
+
+bool PIDControl::Compute(double dt) {
+    if (!activo_ || !std::isfinite(dt) || dt <= 0.0 ||
+        !std::isfinite(input_) || !std::isfinite(setpoint_)) return false;
+
+    const double error = signo_ * (setpoint_ - input_);
+    const double proporcional = kp_ * error;
+    const double pendiente = calcularPendiente(dt);
+    const double derivativo = -signo_ * kd_ * pendiente;
+
+    // El mando suma la base y las acciones P, I y D. I cambia según el error y dt.
+    const double mandoActual = mandoBase_ + proporcional + integral_ + derivativo;
+    const double pasoIntegral = ki_ * error * dt;
+    if (!std::isfinite(mandoActual) || !std::isfinite(pasoIntegral)) return false;
+
+    const double pasoPermitido = limitarPasoIntegral(mandoActual, pasoIntegral, minimo_, maximo_);
+    const double nuevaIntegral = integral_ + pasoPermitido;
+    const double nuevoMando = mandoActual + pasoPermitido;
+    if (!std::isfinite(nuevaIntegral) || !std::isfinite(nuevoMando)) return false;
+
+    integral_ = nuevaIntegral;
+    derivadaFiltrada_ = pendiente;
+    medicionAnterior_ = input_;
+    output_ = limitar(nuevoMando, minimo_, maximo_);
+    return true;
+}
+
+double PIDControl::calcularPendiente(double dt) const {
+    if (kd_ == 0.0) return 0.0;
+    const double intervalo = filtroSegundos_ + dt;
+    if (!std::isfinite(intervalo)) return NAN;
+
+    // Sin filtro, queda el cambio de la medición dividido entre dt.
+    return (filtroSegundos_ / intervalo) * derivadaFiltrada_ +
+           (input_ - medicionAnterior_) / intervalo;
 }
 
 bool PIDControl::SetOutputLimits(double minimo, double maximo) {
@@ -57,44 +100,5 @@ bool PIDControl::SetMode(ModoPID modo) {
     derivadaFiltrada_ = 0.0;
     integral_ = 0.0;
     activo_ = true;
-    return true;
-}
-
-bool PIDControl::Compute(double dt) {
-    if (!activo_ || !std::isfinite(dt) || dt <= 0.0 ||
-        !std::isfinite(input_) || !std::isfinite(setpoint_)) return false;
-
-    const double error = signo_ * (setpoint_ - input_);
-    const double proporcional = kp_ * error;
-    double nuevaDerivada = 0.0;
-    if (kd_ > 0.0) {
-        // Filtro de primer orden de la derivada medida. Con tau=0 queda ΔInput/dt.
-        const double denominador = filtroSegundos_ + dt;
-        if (!std::isfinite(denominador)) return false;
-        nuevaDerivada = (filtroSegundos_ / denominador) * derivadaFiltrada_ +
-                        (input_ - medicionAnterior_) / denominador;
-    }
-    const double derivativo = -signo_ * kd_ * nuevaDerivada;
-
-    const double mandoSinIncremento = mandoBase_ + proporcional + integral_ + derivativo;
-    double incrementoIntegral = ki_ * error * dt;
-    if (!std::isfinite(mandoSinIncremento) || !std::isfinite(incrementoIntegral)) return false;
-
-    // Solo permite integrar hasta el límite hacia el que empuja el incremento.
-    // Un incremento en el sentido opuesto ayuda a recuperar margen de mando.
-    if (incrementoIntegral > 0.0) {
-        incrementoIntegral = std::min(incrementoIntegral, std::max(0.0, maximo_ - mandoSinIncremento));
-    } else if (incrementoIntegral < 0.0) {
-        incrementoIntegral = std::max(incrementoIntegral, std::min(0.0, minimo_ - mandoSinIncremento));
-    }
-
-    const double nuevaIntegral = integral_ + incrementoIntegral;
-    const double mando = mandoSinIncremento + incrementoIntegral;
-    if (!std::isfinite(nuevaIntegral) || !std::isfinite(mando)) return false;
-
-    integral_ = nuevaIntegral;
-    derivadaFiltrada_ = nuevaDerivada;
-    medicionAnterior_ = input_;
-    output_ = limitar(mando, minimo_, maximo_);
     return true;
 }

@@ -23,6 +23,8 @@ public:
     double GetKd() const { return kd_; }
 
 private:
+    double calcularPendiente(double dt) const;
+
     const double& input_;
     double& output_;
     const double& setpoint_;

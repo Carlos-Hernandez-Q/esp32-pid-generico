@@ -81,6 +81,10 @@ mismas variables. Si aumentar el mando hace subir la medición, se configura
 | `PIDControl` | Calcula un mando a partir de la medición, la referencia y el intervalo en segundos. Aplica los límites configurados. | `lib/PIDControl/src/PIDControl.h` y `PIDControl.cpp` |
 | `ComandosPID` | Recibe órdenes por serial y publica el CSV. Trabaja con la misma instancia de PID y el mismo `Setpoint` del `main`. | `lib/ComandosPID/src/ComandosPID.h` y `ComandosPID.cpp` |
 
+Para seguir el cálculo en el código, lee primero
+[`Compute(dt)`](lib/PIDControl/src/PIDControl.cpp). Ahí se ve cómo se obtiene
+el mando a partir de P, I, D y los límites del actuador.
+
 En `PIDControl`, P responde al error actual y la integral I acumula el error
 con el tiempo real entre muestras. La integral solo crece hasta el límite
 hacia el que empujaría el mando. Si el incremento ayuda a salir del límite,
