@@ -32,47 +32,43 @@ mismas variables. Si aumentar el mando hace subir la medición, se configura
 
 ### 2. Qué hace `setup()`
 
-1. Abre el puerto serial a la velocidad de `Config::BAUDIOS`.
-2. Aplica `SetOutputLimits(SALIDA_MIN, SALIDA_MAX)` para fijar el rango de
+1. Aplica `SetOutputLimits(SALIDA_MIN, SALIDA_MAX)` para fijar el rango de
    mando disponible. Por ejemplo, una bomba puede usar 0 a 100 % y un servo
    puede usar grados respecto a su centro. Cada equipo elige sus límites.
-3. Configura la constante de tiempo del filtro derivativo con
+2. Configura la constante de tiempo del filtro derivativo con
    `SetDerivativeFilter(Config::FILTRO_D_SEG)`.
-4. Llama a `Planta::iniciar()` para preparar el hardware y solicita la parada.
-   El sistema queda en `PARADO` si la preparación y la parada son correctas.
-   Si alguna falla, queda en `FALLO`.
-5. Guarda el tiempo inicial con `millis()` y muestra las órdenes seriales.
+3. `lazo.iniciar()` abre el serial a `Config::BAUDIOS`, conecta el reloj del
+   ESP32, prepara el hardware mediante
+   `Planta::iniciar()`, solicita la salida segura y muestra las órdenes
+   seriales. Si todo se prepara correctamente, el sistema espera `START`
+   en estado `PARADO`. Si hay un problema de inicialización, indica `FALLO`.
 
 ### 3. Qué hace `loop()`
 
-1. Si el sistema está listo y ha pasado al menos `PERIODO_PID_MS` desde que
-   estuvo lista la última muestra, llama a `leerEntrada()`. Esa función pide
-   la medición a `Planta::leerSensor(Input)` y verifica que sea finita y esté
-   entre `MEDICION_MIN` y `MEDICION_MAX`.
-2. Registra el instante en el que terminó la lectura. Resta el instante
-   anterior y divide entre 1000 para obtener `dtSegundos`. Por ejemplo, si
-   el periodo está en 20 ms y entre lecturas pasan 24 ms, el PID recibe
-   `0.024` segundos.
-3. Con el estado `ACTIVO` y una lectura válida, `miPID.Compute(dtSegundos)`
-   calcula y actualiza `Output`. Solo si el cálculo tiene éxito se llama a
-   `Planta::escribirActuador(Output)`. Una lectura, un cálculo o una escritura
-   que fallen llevan el control a `FALLO` y solicitan la salida segura.
-4. En cada vuelta, incluso entre muestras, se atienden los comandos y se
-   intenta publicar la telemetría cuando corresponde. Mientras el control
-   está parado, las mediciones sirven para observar el sensor.
+1. `lazo.leerSensor()` toma una muestra cuando ha pasado `PERIODO_PID_MS`.
+   Actualiza `Input` y permite calcular solo si la medición es válida y el
+   lazo está `ACTIVO`. Mientras está parado, la lectura sirve para comprobar
+   el sensor por medio de la telemetría.
+2. `miPID.Compute()` lee `Input` y `Setpoint` y escribe `Output`. El reloj
+   mide el intervalo desde el último cálculo. Por ejemplo, para 24 ms la
+   integral y la derivada usan `0.024` segundos.
+3. `lazo.aplicarSalida(Output, calculoValido)` llama al actuador si el cálculo
+   fue correcto. Un fallo de medición, cálculo o escritura desactiva el PID
+   y solicita la salida segura.
+4. `lazo.atenderSerial()` procesa las órdenes y publica la telemetría al
+   ritmo configurado.
 
 ### 4. Arranque, parada y fallos
 
-- `arrancarPID()` pide una primera medición válida y confirma que el adaptador
-  aceptó la orden de salida segura. Luego activa el modo automático. El PID
-  toma esa medición como punto inicial de la derivada y el mando seguro como
-  base del cálculo.
-- `detenerPID()` llama a `aplicarParada()`. Esa función pasa a modo manual,
-  registra `SALIDA_SEGURA` en `Output` y llama a `Planta::aplicarSalidaSegura()`.
-  La forma de detener una bomba, un motor o un servo la decide su adaptador.
-- `nombreEstado()` traduce el estado a `PARADO`, `ACTIVO` o `FALLO` para el
-  CSV. Después de corregir un fallo durante la operación se puede enviar
+- `START` pide una primera medición válida y una salida segura. Después
+  activa el modo automático con esa medición y el mando de inicio.
+- `STOP` pasa a modo manual, registra `SALIDA_SEGURA` en `Output` y llama
+  a `Planta::aplicarSalidaSegura()`.
+- Después de corregir un fallo durante la operación se puede enviar
   `START` de nuevo. Si falló la inicialización, se corrige y se reinicia.
+
+Estos pasos están en [`LazoPID.cpp`](src/LazoPID.cpp). Para cambiar de sensor
+o actuador, implementa las funciones de `Planta.cpp` y edita `Configuracion.h`.
 
 ## Librerías del proyecto
 
@@ -84,6 +80,12 @@ mismas variables. Si aumentar el mando hace subir la medición, se configura
 Para seguir el cálculo en el código, lee primero
 [`Compute(dt)`](lib/PIDControl/src/PIDControl.cpp). Ahí se ve cómo se obtiene
 el mando a partir de P, I, D y los límites del actuador.
+
+`Compute()` usa un reloj en milisegundos registrado en modo manual con
+`SetClock()`. El proyecto conecta ese reloj al iniciar el lazo y llama a
+`Compute()` una vez por muestra válida. Para usar la librería con otro
+planificador también se puede llamar a `Compute(dtSegundos)` y proporcionar
+el intervalo. Elige una forma de llamada para cada sesión de control.
 
 En `PIDControl`, P responde al error actual y la integral I acumula el error
 con el tiempo real entre muestras. La integral solo crece hasta el límite
@@ -100,7 +102,7 @@ los tres términos al mando base y limita el resultado al rango del actuador.
 
 En `ComandosPID`, `SP` valida y modifica `Setpoint`, `PID` actualiza las tres
 ganancias con `SetTunings()` y `START` y `STOP` llaman a las funciones de
-control del `main`. La consola recibe los datos del lazo para armar el CSV.
+control de `LazoPID`. La consola recibe los datos del lazo para armar el CSV.
 
 ## Qué debe completar cada equipo
 
@@ -192,8 +194,6 @@ Este protocolo requiere adaptar el VI anterior de LabVIEW. Los cambios por
 serial se pierden al reiniciar; editar `Configuracion.h` para fijar los de arranque.
 La telemetría se omite si no cabe en el buffer del puerto. En un `Stream` que
 no implemente `availableForWrite()` con capacidad positiva no se envía CSV.
-
-Para arrancar desde código, llamar a `arrancarPID()` tras inicializar el hardware.
 
 ## Validación
 

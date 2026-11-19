@@ -22,6 +22,21 @@ PIDControl::PIDControl(double& input, double& output, double& setpoint,
     SetTunings(kp, ki, kd);
 }
 
+bool PIDControl::SetClock(RelojMillis reloj) {
+    if (activo_ || !reloj) return false;
+    reloj_ = reloj;
+    return true;
+}
+
+bool PIDControl::Compute() {
+    if (!activo_ || !reloj_) return false;
+    const uint32_t ahora = reloj_();
+    const uint32_t intervaloMs = ahora - ultimoCalculoMs_;
+    if (!Compute(intervaloMs / 1000.0)) return false;
+    ultimoCalculoMs_ = ahora;
+    return true;
+}
+
 bool PIDControl::Compute(double dt) {
     if (!activo_ || !std::isfinite(dt) || dt <= 0.0 ||
         !std::isfinite(input_) || !std::isfinite(setpoint_)) return false;
@@ -99,6 +114,7 @@ bool PIDControl::SetMode(ModoPID modo) {
     medicionAnterior_ = input_;
     derivadaFiltrada_ = 0.0;
     integral_ = 0.0;
+    if (reloj_) ultimoCalculoMs_ = reloj_();
     activo_ = true;
     return true;
 }

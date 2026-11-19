@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utility>
 
 namespace {
 bool leerNumero(char*& cursor, double& valor) {
@@ -22,10 +23,10 @@ bool finDeComando(const char* cursor) {
 
 ComandosPID::ComandosPID(Stream& puerto, PIDControl& pid, double& referencia, double referenciaMin,
                          double referenciaMax, uint32_t periodoTelemetriaMs,
-                         bool (*arrancar)(), bool (*detener)())
+                         std::function<bool()> arrancar, std::function<bool()> detener)
     : puerto_(puerto), pid_(pid), referencia_(referencia), referenciaMin_(referenciaMin),
       referenciaMax_(referenciaMax), periodoTelemetriaMs_(periodoTelemetriaMs),
-      arrancar_(arrancar), detener_(detener) {}
+      arrancar_(std::move(arrancar)), detener_(std::move(detener)) {}
 
 void ComandosPID::iniciar() {
     puerto_.println("Comandos: START | STOP | SP valor | PID kp ki kd");
