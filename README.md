@@ -4,6 +4,9 @@ Esqueleto para un sistema **físico** de una variable medida y un mando. Cada
 equipo implementa su sensor y actuador, y configura el lazo según su planta.
 Las ganancias, unidades, dirección y periodo necesitan ajuste para cada sistema.
 
+[Consultar el manual de uso en PDF](output/pdf/manual-pid-esp32.pdf). Incluye
+la configuración, la integración del hardware, la API y los comandos seriales.
+
 ## Explicación de `main.cpp`
 
 Para presentar el programa, seguir una vuelta del lazo. El sensor actualiza
