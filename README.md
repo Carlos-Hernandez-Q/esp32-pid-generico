@@ -5,7 +5,10 @@ el PID calcula cuánto aumentar o reducir el brillo, y el LED ilumina el LDR
 para cerrar el lazo.
 
 **La configuración y los puntos de adaptación están en un solo archivo.**
-[Abrir `src/main.cpp`](src/main.cpp) · [Leer el manual en PDF](output/pdf/manual-pid-esp32.pdf)
+[Abrir `src/main.cpp`](src/main.cpp) · [Guía en PDF, línea por línea](output/pdf/manual-pid-esp32.pdf)
+
+El PDF explica las 71 líneas del programa y muestra los cambios para usar un
+TMP36 por ADC, un BH1750 por I2C o un actuador con driver PWM.
 
 ## Conectar y usar el ejemplo
 
