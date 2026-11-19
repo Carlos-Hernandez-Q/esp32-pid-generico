@@ -7,6 +7,39 @@ Las ganancias, unidades, dirección y periodo necesitan ajuste para cada sistema
 [Consultar el manual de uso en PDF](output/pdf/manual-pid-esp32.pdf). Incluye
 la configuración, la integración del hardware, la API y los comandos seriales.
 
+## Ejemplo real con LDR y LED
+
+El entorno `ldr_led` contiene un programa comentado en un solo archivo.
+Reutiliza `PIDControl` y arranca automáticamente con una referencia de 750
+cuentas del ADC. Las ganancias incluidas son un punto de partida para la
+práctica. [Código del ejemplo](src/ejemplos/ldr_led.cpp)
+
+| Señal | Conexión para ESP32 DevKit clásico |
+| --- | --- |
+| Entrada analógica | LDR entre 3V3 y el nodo de lectura. Resistencia de 10 kΩ entre ese nodo y GND. Une el nodo a GPIO34. |
+| Salida PWM | GPIO18 a una resistencia de 330 Ω y de ahí al ánodo del LED. Cátodo a GND. |
+
+Apunta el LED hacia el LDR para que un aumento de PWM eleve la medición y
+cierre el lazo. La entrada al PID se **recorta a 500–1000**. Por ejemplo,
+una lectura de 420 se convierte en 500 y una de 1010 en 1000. El mando al LED
+se limita a **50–200** en PWM de 8 bits. El LED empieza en 50.
+
+```text
+pio run -e ldr_led
+pio run -e ldr_led -t upload
+pio device monitor -e ldr_led
+```
+
+El monitor muestra `adc_crudo,input,setpoint,pwm`. Si la lectura se queda
+lejos de 750 con el PWM al mínimo o al máximo, revisa la luz ambiente y la
+distancia entre LED y LDR. Para observar qué pasa al llegar a un límite,
+compara la lectura cruda con `input` y mira el mando aplicado.
+
+La plantilla general sigue disponible en el entorno `esp32` descrito abajo.
+La práctica usa `analogReadResolution(10)` y `analogWriteResolution(8)` con
+la versión de Arduino-ESP32 fijada en el proyecto. [ADC de Espressif](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/adc.html)
+· [PWM en Arduino-ESP32 2.0.17](https://github.com/espressif/arduino-esp32/blob/2.0.17/cores/esp32/esp32-hal-ledc.c)
+
 ## Explicación de `main.cpp`
 
 Para presentar el programa, seguir una vuelta del lazo. El sensor actualiza
